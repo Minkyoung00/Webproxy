@@ -947,20 +947,23 @@ ssize_t Rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen)
  *       -1 with errno set for other errors.
  */
 /* $begin open_clientfd */
+/*  string 타입으로 표현된 호스트이름, 호스트주소, 서비스이름, 포트번호를 받아 소켓 주소 구조체로 변환*/
 int open_clientfd(char *hostname, char *port) {
     int clientfd, rc;
     struct addrinfo hints, *listp, *p;
 
     /* Get a list of potential server addresses */
+    /* getaddrinfo()에 hints 인자를 넣기 위해 각 필드를 초기화하는 부분*/
+
+    /* 소켓 주소 구조체의 메모리를 0으로 초기화*/
+    /* 근데 없어도 되지 않나...? 아 안 되겠군. 다음 코드에서 hints. 하려고 하면 NULL 참조 에러 나겠지*/
     memset(&hints, 0, sizeof(struct addrinfo));
+    /* SOCK_STREAM : TCP / SOCK_DGRAM : UDP / SOCK_RAW : RAW*/
     hints.ai_socktype = SOCK_STREAM;  /* Open a connection */
     hints.ai_flags = AI_NUMERICSERV;  /* ... using a numeric port arg. */
     hints.ai_flags |= AI_ADDRCONFIG;  /* Recommended for connections */
-    if ((rc = getaddrinfo(hostname, port, &hints, &listp)) != 0) {
-        fprintf(stderr, "getaddrinfo failed (%s:%s): %s\n", hostname, port, gai_strerror(rc));
-        return -2;
-    }
-  
+    Getaddrinfo(hostname, port, &hints, &listp);
+
     /* Walk the list for one that we can successfully connect to */
     for (p = listp; p; p = p->ai_next) {
         /* Create a socket descriptor */
@@ -970,10 +973,7 @@ int open_clientfd(char *hostname, char *port) {
         /* Connect to the server */
         if (connect(clientfd, p->ai_addr, p->ai_addrlen) != -1) 
             break; /* Success */
-        if (close(clientfd) < 0) { /* Connect failed, try another */  //line:netp:openclientfd:closefd
-            fprintf(stderr, "open_clientfd: close failed: %s\n", strerror(errno));
-            return -1;
-        } 
+        Close(clientfd); /* Connect failed, try another */  //line:netp:openclientfd:closefd
     } 
 
     /* Clean up */
@@ -1004,10 +1004,7 @@ int open_listenfd(char *port)
     hints.ai_socktype = SOCK_STREAM;             /* Accept connections */
     hints.ai_flags = AI_PASSIVE | AI_ADDRCONFIG; /* ... on any IP address */
     hints.ai_flags |= AI_NUMERICSERV;            /* ... using port number */
-    if ((rc = getaddrinfo(NULL, port, &hints, &listp)) != 0) {
-        fprintf(stderr, "getaddrinfo failed (port %s): %s\n", port, gai_strerror(rc));
-        return -2;
-    }
+    Getaddrinfo(NULL, port, &hints, &listp);
 
     /* Walk the list for one that we can bind to */
     for (p = listp; p; p = p->ai_next) {
@@ -1022,10 +1019,7 @@ int open_listenfd(char *port)
         /* Bind the descriptor to the address */
         if (bind(listenfd, p->ai_addr, p->ai_addrlen) == 0)
             break; /* Success */
-        if (close(listenfd) < 0) { /* Bind failed, try the next */
-            fprintf(stderr, "open_listenfd close failed: %s\n", strerror(errno));
-            return -1;
-        }
+        Close(listenfd); /* Bind failed, try the next */
     }
 
 
@@ -1036,7 +1030,7 @@ int open_listenfd(char *port)
 
     /* Make it a listening socket ready to accept connection requests */
     if (listen(listenfd, LISTENQ) < 0) {
-        close(listenfd);
+        close(listenfd); /* listen failed */
 	return -1;
     }
     return listenfd;
